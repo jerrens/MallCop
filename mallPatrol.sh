@@ -1,7 +1,7 @@
 #!/bin/bash
 
 __Author="Jerren Saunders"
-__Version=25.5.15
+__Version=25.6.9
 __ScriptName=$(basename "$0") # File name with extension
 __AppDir=$(dirname "$0") # Path where script is stored
 __AppName=${__ScriptName%.*} # File name without extension
@@ -39,6 +39,50 @@ call_curl() {
     else
         printf '\u2713'
     fi
+    printf '\n'
+}
+
+##
+# Checks the certificate end date of the given URL
+#
+# Parameters:
+# - server: The server name to retrive the certificate for
+# - warning_age (optional): The age at which a warning should be raised. Defaults to 30.
+#
+# Returns: 
+# - None
+certificate_check() {
+    server_name=$2
+    warning_age=${3:-30}
+
+    # Adjust padding for indentation
+    if [ "$inside_group" = true ]; then
+        printf "%-53.53s " "$server_name certificate expires: "
+    else
+        printf "%-55.55s " "$server_name certificate expires: "
+    fi
+    printf "    "
+
+    response=$(echo | openssl s_client -servername $server_name -connect $server_name:443 2>/dev/null | openssl x509 -noout -enddate)
+    # response = "notAfter=Feb 27 20:26:32 2028 GMT"
+
+    # Extract the date string from 'notAfter='
+    enddate_val=${response#notAfter=}
+
+    # Convert end date to seconds since epoch
+    end_seconds=$(date -d "$enddate_val" +%s)
+    now_seconds=$(date +%s)
+
+    # Calculate days remaining
+    days_left=$(( (end_seconds - now_seconds) / 86400 ))
+
+    if [ "$days_left" -le "$warning_age" ]; then
+        printf "\u2717"
+        errors+=("   Certicate for $server_name expires in $days_left days")
+    else 
+        printf '\u2713'
+    fi
+    printf "  %s (%s days)" "$enddate_val" "$days_left"
     printf '\n'
 }
 
@@ -131,7 +175,11 @@ main() {
         
         # HTTP(S) - Call curl on the URL, with optional expected status code
         if [[ $line =~ ^http ]]; then
-            call_curl $line                
+            call_curl $line
+
+        # Certificate Check
+        elif [[ $line =~ ^cert ]]; then
+            certificate_check $line
         
         # Otherwise, assume the line is a hostname or IP and ping it
         else
