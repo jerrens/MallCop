@@ -1,0 +1,17 @@
+host1.domain.net
+server1.domain.net
+192.168.59.25
+https://server1.domain.net/up
+cert server1.domain.net 60
+port host1.domain.net 443
+
+[Group Name]
+host1.domain.net
+server1.domain.net
+192.168.59.25
+https://server1.domain.net/up
+cert server1.domain.net 60
+port host1.domain.net 443
+
+
+# Be sure to end with an empty line

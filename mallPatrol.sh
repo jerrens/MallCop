@@ -1,7 +1,7 @@
 #!/bin/bash
 
 __Author="Jerren Saunders"
-__Version=25.6.9
+__Version=25.7.11
 __ScriptName=$(basename "$0") # File name with extension
 __AppDir=$(dirname "$0") # Path where script is stored
 __AppName=${__ScriptName%.*} # File name without extension
@@ -87,6 +87,38 @@ certificate_check() {
 }
 
 ##
+# Checks if the give port is open on the specificed host
+#
+# Parameters:
+# - server: The server name to check
+# - port: The port number to check
+#
+# Returns:
+# - None
+port_probe() {
+    server_name=$2
+    port_num=$3
+
+     # Adjust padding for indentation
+    lbl="Port $port_num ($server_name)"
+    if [ "$inside_group" = true ]; then
+        printf "%-53.53s " "$lbl"
+    else
+        printf "%-55.55s " "$lbl"
+    fi
+    printf "    "
+
+    # nc -z localhost $1 && echo "port open" || echo "port closed" 
+    if nc -z $server_name $port_num; then
+        printf '\u2713'
+    else
+        printf '\u2717'
+        errors+=("   Port $port_num on $server_name is closed")
+    fi
+    printf '\n'
+}
+
+##
 # Pings the given target host or IP address and prints the status.
 #
 # Parameters:
@@ -97,7 +129,13 @@ certificate_check() {
 call_ping() {
     tgt=$1
 
-    printf "%-57.55s " "$tgt"
+    # Adjust padding for indentation
+    if [ "$inside_group" = true ]; then
+        printf "%-53.53s " "$tgt"
+    else
+        printf "%-55.55s " "$tgt"
+    fi
+    printf "    "
     
     ping -c 1 "$tgt" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
@@ -180,6 +218,10 @@ main() {
         # Certificate Check
         elif [[ $line =~ ^cert ]]; then
             certificate_check $line
+
+        # Port Probe
+        elif [[ $line =~ ^port ]]; then
+            port_probe $line
         
         # Otherwise, assume the line is a hostname or IP and ping it
         else
