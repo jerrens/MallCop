@@ -222,6 +222,9 @@ main() {
         # Port Probe
         elif [[ $line =~ ^port ]]; then
             port_probe $line
+
+        elif [[ $line =~ ^note ]]; then
+            echo "# ${line#* }"
         
         # Otherwise, assume the line is a hostname or IP and ping it
         else
