@@ -1,7 +1,7 @@
 #!/bin/bash
 
 __Author="Jerren Saunders"
-__Version=25.7.11
+__Version=25.7.16
 __ScriptName=$(basename "$0") # File name with extension
 __AppDir=$(dirname "$0") # Path where script is stored
 __AppName=${__ScriptName%.*} # File name without extension
@@ -52,7 +52,7 @@ call_curl() {
     fi
     printf "${ANSI_RST}"
 
-    response=$(curl -s -o /dev/null -w "%{http_code}" "$url")
+    response=$(curl --connect-timeout 10 --silent --output /dev/null --write-out "%{http_code}" "$url")
     printf "${EXPECT_ANSI}%3d${ANSI_RST} " "$response"
     if [ "$response" -ne "$expected_status_code" ]; then
         printf "$FAIL_MARK (Expected %s)" "$expected_status_code"
@@ -85,7 +85,7 @@ certificate_check() {
     fi
     printf "${ANSI_RST}    "
 
-    response=$(echo | openssl s_client -servername $server_name -connect $server_name:443 2>/dev/null | openssl x509 -noout -enddate)
+    response=$(echo | timeout 5 openssl s_client -servername $server_name -connect $server_name:443 2>/dev/null | openssl x509 -noout -enddate)
     # response = "notAfter=Feb 27 20:26:32 2028 GMT"
 
     # Extract the date string from 'notAfter='
