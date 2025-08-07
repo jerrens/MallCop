@@ -43,9 +43,6 @@ call_curl() {
     url=$1
     expected_status_code=${2:-200}
 
-    echo "URL: $url"
-    echo "Expected status code: $expected_status_code"
-    
     # Adjust padding for indentation
     printf "${CURL_ANSI}"
     if [ "$inside_group" = true ]; then
