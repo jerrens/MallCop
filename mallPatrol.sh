@@ -1,7 +1,7 @@
 #!/bin/bash
 
 __Author="Jerren Saunders"
-__Version=25.7.16
+__Version=25.7.30
 __ScriptName=$(basename "$0") # File name with extension
 __AppDir=$(dirname "$0") # Path where script is stored
 __AppName=${__ScriptName%.*} # File name without extension
@@ -42,6 +42,9 @@ FAIL_MARK="$FAIL_ANSI\u2717$ANSI_RST"
 call_curl() {
     url=$1
     expected_status_code=${2:-200}
+
+    echo "URL: $url"
+    echo "Expected status code: $expected_status_code"
     
     # Adjust padding for indentation
     printf "${CURL_ANSI}"
@@ -52,7 +55,7 @@ call_curl() {
     fi
     printf "${ANSI_RST}"
 
-    response=$(curl --connect-timeout 10 --silent --output /dev/null --write-out "%{http_code}" "$url")
+    response=$(curl --connect-timeout 10 --silent --location --output /dev/null --write-out "%{http_code}" "$url")
     printf "${EXPECT_ANSI}%3d${ANSI_RST} " "$response"
     if [ "$response" -ne "$expected_status_code" ]; then
         printf "$FAIL_MARK (Expected %s)" "$expected_status_code"
@@ -231,10 +234,10 @@ main() {
             echo -e "$GROUP_ANSI${BASH_REMATCH[1]}:$ANSI_RST"
             continue
         fi
-        
+
         # If inside a group, indent the result output
         printf "%s" "${inside_group:+  }"
-        
+
         # HTTP(S) - Call curl on the URL, with optional expected status code
         if [[ $line =~ ^http ]]; then
             call_curl $line
