@@ -1,7 +1,8 @@
 #!/bin/bash
+# spell-checker:ignore noout
 
 __Author="Jerren Saunders"
-__Version=25.7.30
+__Version=25.8.12
 __ScriptName=$(basename "$0") # File name with extension
 __AppDir=$(dirname "$0") # Path where script is stored
 __AppName=${__ScriptName%.*} # File name without extension
@@ -16,6 +17,7 @@ PING_ANSI="\e[0;37m"
 CURL_ANSI="\e[0;37m"
 CERT_ANSI="\e[0;37m"
 PORT_ANSI="\e[0;37m"
+UP_ANSI="\e[0;37m"
 NOTE_ANSI="\e[2;3;32m"
 EXPECT_ANSI="\e[1;35m"
 ANSI_RST="\e[0m"
@@ -100,7 +102,7 @@ certificate_check() {
 
     if [ "$days_left" -le "$warning_age" ]; then
         printf "$FAIL_MARK"
-        errors+=("   Certicate for $server_name expires in $days_left days")
+        errors+=("   Certificate for $server_name expires in $days_left days")
     else 
         printf "$PASS_MARK"
     fi
@@ -138,6 +140,40 @@ port_probe() {
         printf "$FAIL_MARK"
         errors+=("   Port $port_num on $server_name is closed")
     fi
+    printf '\n'
+}
+
+get_uptime() {
+    server_name=$2
+
+     # Adjust padding for indentation
+    lbl="Uptime ($server_name)"
+    printf "${UP_ANSI}"
+    if [ "$inside_group" = true ]; then
+        printf "%-53.53s " "$lbl"
+    else
+        printf "%-55.55s " "$lbl"
+    fi
+    printf "${ANSI_RST}    "
+
+    # # From https://stackoverflow.com/a/59592881/2136313
+    # {
+    #     local IFS=$'\n'; 
+    #     read -r -d '' CAPTURED_STDERR;
+    #     local IFS=$'\n';
+    #     read -r -d '' CAPTURED_STDOUT;
+    # } < <((printf '\0%s\0' "$(ssh -o StrictHostKeyChecking=no $server_name "uptime -p")" 1>&2) 2>&1)
+    response=$(echo | ssh -o StrictHostKeyChecking=no $server_name "uptime -p" 2>&1)
+
+    # If nothing was captured by stderr, assume success
+    if [ $? -eq 0 ]; then
+        printf "$PASS_MARK"
+        printf "  ${EXPECT_ANSI}%s${ANSI_RST}" "$response"
+    else
+        printf "$FAIL_MARK"
+        errors+=("   $response")
+    fi
+    
     printf '\n'
 }
 
@@ -246,6 +282,10 @@ main() {
         # Port Probe
         elif [[ $line =~ ^port ]]; then
             port_probe $line
+
+        # Up Time
+        elif [[ $line =~ ^up ]]; then
+            get_uptime $line
 
         elif [[ $line =~ ^note ]]; then
             echo -e "$NOTE_ANSI# ${line#* }$ANSI_RST"

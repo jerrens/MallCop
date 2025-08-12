@@ -1,3 +1,37 @@
+# The following are a list of URLs, hostnames and IP addresses for mallPatrol.sh
+#
+# Lines starting with 'http(s)' will use curl for the check
+#   If a status code other than 200 is expected, add it as the second word on the line
+#   Examples: 
+#     https://host.domain.net
+#     https://host.domain.net 202
+#   Spaces in URLs must be html encoded
+# 
+# Lines starting with 'cert' will retrieve the certificate expiration date for the given Server
+#  A warning will be raise if the age is within 30 days.
+#  To change this default warning age, an second argument can be provided
+#  Examples:
+#    cert host.domain.net
+#    cert host.domain.net 90
+#
+# Lines starting with 'port' will check if the specified port for the given Server is open
+#  Examples:
+#    port host.domain.net 27017
+# 
+# Lines starting with 'up' will connect to the specified host (via SSH) and determine the uptime.
+#  It is recommended that this only be done for machines where authentication can be done via SSH key.
+#  Examples
+#    up host.domain.net
+#
+# Lines starting with 'note' will be echo'ed to the output
+#  Examples:
+#    note My custom message to show in output
+#
+# All other lines will be simply perform a ping to the given hostname/IP address
+#
+# Groups/Sections may be created by adding a line with the group name enclosed in square brackets (ie. `[Stage Server]`).
+#   To end a group, use an empty line
+
 note Custom Note
 localhost
 badname

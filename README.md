@@ -1,7 +1,8 @@
 # Mall Cop
+
 ## Monitoring and Alerting for Loading from a List - Central Observation Process
 
-This script reads a list of servers from a file (default is `urls.list`) and performs several common querys to  make sure the server is responding as expected.
+This script reads a list of servers from a file (default is `urls.list`) and performs several common queries to  make sure the server is responding as expected.
 
 ![MallPatrol](documentation/images/MallPatrolExample.png)
 
@@ -17,24 +18,21 @@ Successful test will be marked with a `✓` mark.
 If any errors were detected, the corresponding line will be marked with an `✗`.
 The details of the error will also be provided in a summary at the end of the tests in an `Errors:` section.
 
-
-## Available options: 
+## Available options
 
 The following is a list of prefixes and options that are available for use in the list file provided to MallPatrol.
-
 
 ## ping (Default)
 
 If a line only contains an IP address or a hostname (FQDN), then the provided value will be pinged for a response.
-A response of less than 1 seconds is considered an error.
+A response of more than 1 seconds is considered an error.
 
 Example
 
-```
+```text
 192.168.51.49
-dev01.domain.net
+host.domain.net
 ```
-
 
 ## [Group]
 
@@ -46,24 +44,23 @@ To end a group, use an empty line.
 
 Example:
 
-```
+```text
 [Dev]
-dev01.domain.net
+host.domain.net
 http://localhost:8002
 
 
 [Stage]
-server2.domain.net
-cert server2.domain.net
-https://server2.domain.net
+stage.host.domain.net
+cert stage.host.domain.net
+https://stage.host.domain.net
 
 
 [Production]
-server1.domain.net
-cert server1.domain.net
-https://server1.domain.net
+host.domain.net
+cert host.domain.net
+https://host.domain.net
 ```
-
 
 ### http | https
 
@@ -71,15 +68,14 @@ Lines starting with 'http(s)' will use curl for the check.
 If a status code other than 200 is expected, add it as the second word on the line.
 **NOTE**: Spaces in URLs must be html encoded
 
-Examples: 
+Examples:
 
-```
+```text
 https://host.domain.net
 
 # If a 202 Status response is expected
 https://host.domain.net 202
 ```
-
 
 ### cert
 
@@ -89,24 +85,33 @@ To change this default warning age, a second argument can be provided.
 
 Example:
 
-```
+```text
 cert host.domain.net
 
 # To warn when certificate expires in 90 days or less
 cert host.domain.net 90
 ```
 
-
 ### port
 
 Lines starting with 'port' will check if the specified port for the given Server is open
- 
+
 Example:
 
-```
+```text
 port host.domain.net 27017
 ```
 
+### up
+
+Lines starting with 'up' will connect to the specified host (via SSH) and determine the uptime.
+It is recommended that this only be done for machines where authentication can be done via SSH key.
+
+Example:
+
+```text
+up host.domain.net
+```
 
 ### note
 
@@ -114,18 +119,17 @@ Lines starting with `note` will be echo'ed to the output during execution
 
 Example:
 
-```
+```text
 note My custom message to show in output
 ```
-
 
 ### # (comment)
 
 Lines starting with `#` are considered comments and will be skipped.
 
-Exmaple:
+Example:
 
-```
+```text
 # This line will NOT be printed to the output
 note This line will appear in the output
 ```
