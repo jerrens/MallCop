@@ -2,7 +2,7 @@
 # spell-checker:ignore noout
 
 __Author="Jerren Saunders"
-__Version=25.8.12
+__Version=25.12.10
 __ScriptName=$(basename "$0") # File name with extension
 __AppDir=$(dirname "$0") # Path where script is stored
 __AppName=${__ScriptName%.*} # File name without extension
@@ -18,6 +18,7 @@ CURL_ANSI="\e[0;37m"
 CERT_ANSI="\e[0;37m"
 PORT_ANSI="\e[0;37m"
 UP_ANSI="\e[0;37m"
+DISK_ANSI="\e[0;37m"
 NOTE_ANSI="\e[2;3;32m"
 EXPECT_ANSI="\e[1;35m"
 ANSI_RST="\e[0m"
@@ -111,7 +112,7 @@ certificate_check() {
 }
 
 ##
-# Checks if the give port is open on the specificed host
+# Checks if the given port is open on the specificed host
 #
 # Parameters:
 # - server: The server name to check
@@ -143,6 +144,14 @@ port_probe() {
     printf '\n'
 }
 
+##
+# Gets the uptime of the given server
+#
+# Parameters:
+# - server: The server name to check
+#
+# Returns:
+# - None
 get_uptime() {
     server_name=$2
 
@@ -172,6 +181,47 @@ get_uptime() {
     else
         printf "$FAIL_MARK"
         errors+=("   $response")
+    fi
+    
+    printf '\n'
+}
+
+##
+# Checks the disk usage on the given server to see if any mount points exceed the specificed Use% threshold
+#
+# Parameters:
+# - server: The server name to check
+# - threshold (optional): The Use% threshold to check against. Defaults to '80'.
+#
+# Returns:
+# - None
+get_diskusage() {
+    server_name=$2
+    threshold=${3:-80} # Default threshold is 80%
+    
+     # Adjust padding for indentation
+    lbl="Disk Usage ($server_name)"
+    printf "${DISK_ANSI}"
+    if [ "$inside_group" = true ]; then
+        printf "%-53.53s " "$lbl"
+    else
+        printf "%-55.55s " "$lbl"
+    fi
+    printf "${ANSI_RST}    "
+    response=$(echo | ssh -o StrictHostKeyChecking=no $server_name "df -h | awk '{ if (\$5 > $threshold) print \$0 }'" 2>&1)
+
+    # If only one line was captured (header), assume success
+    if [ $(echo "$response" | wc -l) -eq 1 ]; then    
+        printf "$PASS_MARK"
+    else
+        printf "$FAIL_MARK"        
+        errors+=("Limited Disk Space on $server_name:")
+        
+        # Split the response into separate lines and add them to the errors array with indentation
+        while IFS= read -r line; do
+            indented_line="    $line"
+            errors+=("$indented_line")
+        done <<< "$response"
     fi
     
     printf '\n'
@@ -224,6 +274,9 @@ main() {
     # Check if help was requested
     elif [ $# -eq 1 ] && [ "$1" == "-h" ]; then
         echo "Usage: $0 [-h] [filename]"
+        exit 0
+    elif [ $# -eq 1 ] && [ "$1" == "-v" ]; then
+        echo "$__Version"
         exit 0
     elif [ $# -gt 2 ]; then
         echo "Error: Too many arguments provided."
@@ -287,6 +340,10 @@ main() {
         elif [[ $line =~ ^up ]]; then
             get_uptime $line
 
+        # Disk Usage
+        elif [[ $line =~ ^disk ]]; then
+            get_diskusage $line
+
         elif [[ $line =~ ^note ]]; then
             echo -e "$NOTE_ANSI# ${line#* }$ANSI_RST"
         
@@ -302,7 +359,7 @@ main() {
     if [ "${#errors[@]}" -gt 0 ]; then
         echo -e "${ERROR_HEADER_ANSI}Errors:${ERROR_ANSI}"
         for err in "${errors[@]}"; do
-            echo "$err"
+            echo -e "$err"
         done
         echo -e $ANSI_RST
         exit "${#errors[@]}"

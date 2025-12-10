@@ -113,6 +113,19 @@ Example:
 up host.domain.net
 ```
 
+### disk
+
+Lines starting with 'disk' will connect to the specified host (via SSH) and determine the disk usage.
+A third argument can be provided to change the default warning threshold of 80%.
+It is recommended that this only be done for machines where authentication can be done via SSH key.
+
+Example:
+
+```text
+disk host.domain.net
+disk host.domain.net 75
+```
+
 ### note
 
 Lines starting with `note` will be echo'ed to the output during execution
