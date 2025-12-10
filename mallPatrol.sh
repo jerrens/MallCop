@@ -208,7 +208,7 @@ get_diskusage() {
         printf "%-55.55s " "$lbl"
     fi
     printf "${ANSI_RST}    "
-    response=$(echo | ssh -o StrictHostKeyChecking=no $server_name "df -h | awk '{ if (\$5 > $threshold) print \$0 }'" 2>&1)
+    response=$(echo | ssh -o StrictHostKeyChecking=no $server_name "df -h | awk '{ if (NR == 1 || \$5+0 > $threshold) print \$0 }'" 2>&1)
 
     # If only one line was captured (header), assume success
     if [ $(echo "$response" | wc -l) -eq 1 ]; then    
