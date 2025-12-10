@@ -2,11 +2,11 @@
 #
 # Lines starting with 'http(s)' will use curl for the check
 #   If a status code other than 200 is expected, add it as the second word on the line
-#   Examples: 
+#   Examples:
 #     https://host.domain.net
 #     https://host.domain.net 202
 #   Spaces in URLs must be html encoded
-# 
+#
 # Lines starting with 'cert' will retrieve the certificate expiration date for the given Server
 #  A warning will be raise if the age is within 30 days.
 #  To change this default warning age, an second argument can be provided
@@ -17,11 +17,18 @@
 # Lines starting with 'port' will check if the specified port for the given Server is open
 #  Examples:
 #    port host.domain.net 27017
-# 
+#
 # Lines starting with 'up' will connect to the specified host (via SSH) and determine the uptime.
 #  It is recommended that this only be done for machines where authentication can be done via SSH key.
 #  Examples
 #    up host.domain.net
+#
+# Lines starting with 'disk' will connect to the specified host (via SSH) and determine the disk usage of mount points.
+#  An optional argument may be provided to change the default usage threshold of 80.
+#  It is recommended that this only be done for machines where authentication can be done via SSH key.
+#  Examples
+#    disk host.domain.net
+#    disk host.domain.net 75
 #
 # Lines starting with 'note' will be echo'ed to the output
 #  Examples:

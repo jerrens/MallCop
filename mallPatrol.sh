@@ -73,7 +73,7 @@ call_curl() {
 # - server: The server name to retrive the certificate for
 # - warning_age (optional): The age at which a warning should be raised. Defaults to 30.
 #
-# Returns: 
+# Returns:
 # - None
 certificate_check() {
     server_name=$2
@@ -104,7 +104,7 @@ certificate_check() {
     if [ "$days_left" -le "$warning_age" ]; then
         printf "$FAIL_MARK"
         errors+=("   Certificate for $server_name expires in $days_left days")
-    else 
+    else
         printf "$PASS_MARK"
     fi
     printf "  ${EXPECT_ANSI}%s (%s days)${ANSI_RST}" "$enddate_val" "$days_left"
@@ -134,7 +134,7 @@ port_probe() {
     fi
     printf "${ANSI_RST}    "
 
-    # nc -z localhost $1 && echo "port open" || echo "port closed" 
+    # nc -z localhost $1 && echo "port open" || echo "port closed"
     if nc -z $server_name $port_num; then
         printf "$PASS_MARK"
     else
@@ -167,7 +167,7 @@ get_uptime() {
 
     # # From https://stackoverflow.com/a/59592881/2136313
     # {
-    #     local IFS=$'\n'; 
+    #     local IFS=$'\n';
     #     read -r -d '' CAPTURED_STDERR;
     #     local IFS=$'\n';
     #     read -r -d '' CAPTURED_STDOUT;
@@ -182,7 +182,7 @@ get_uptime() {
         printf "$FAIL_MARK"
         errors+=("   $response")
     fi
-    
+
     printf '\n'
 }
 
@@ -198,7 +198,7 @@ get_uptime() {
 get_diskusage() {
     server_name=$2
     threshold=${3:-80} # Default threshold is 80%
-    
+
      # Adjust padding for indentation
     lbl="Disk Usage ($server_name)"
     printf "${DISK_ANSI}"
@@ -211,19 +211,19 @@ get_diskusage() {
     response=$(echo | ssh -o StrictHostKeyChecking=no $server_name "df -h | awk '{ if (NR == 1 || \$5+0 > $threshold) print \$0 }'" 2>&1)
 
     # If only one line was captured (header), assume success
-    if [ $(echo "$response" | wc -l) -eq 1 ]; then    
+    if [ $(echo "$response" | wc -l) -eq 1 ]; then
         printf "$PASS_MARK"
     else
-        printf "$FAIL_MARK"        
+        printf "$FAIL_MARK"
         errors+=("Limited Disk Space on $server_name:")
-        
+
         # Split the response into separate lines and add them to the errors array with indentation
         while IFS= read -r line; do
             indented_line="    $line"
             errors+=("$indented_line")
         done <<< "$response"
     fi
-    
+
     printf '\n'
 }
 
@@ -246,7 +246,7 @@ call_ping() {
         printf "%-55.55s " "$tgt"
     fi
     printf "${ANSI_RST}    "
-    
+
     ping -c 1 -w 1 "$tgt" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
         printf "$FAIL_MARK"
@@ -262,7 +262,7 @@ main() {
     # Check if a file name was provided as an alternative list
     if [ $# -eq 0 ]; then
         # No arguments provided, check if a file with the default name exist in the current directory
-        if [ -f "${PWD}/${DEFAULT_FILE}" ]; then 
+        if [ -f "${PWD}/${DEFAULT_FILE}" ]; then
             # Using default file in current directory
             FILE="${PWD}/${DEFAULT_FILE}"
 
@@ -297,7 +297,7 @@ main() {
 
     # Now, loop through each line in the file and perform the desired action
     while IFS= read -r line; do
-        # Ignore comments 
+        # Ignore comments
         if [[ $line =~ ^# ]]; then
             continue
         fi
@@ -312,7 +312,7 @@ main() {
 
             continue
         fi
-        
+
         # Group Headers - If the line starts with a '['
         if [[ $line =~ ^\[([^\]]*)\]$ ]]; then
             inside_group=true
@@ -346,7 +346,7 @@ main() {
 
         elif [[ $line =~ ^note ]]; then
             echo -e "$NOTE_ANSI# ${line#* }$ANSI_RST"
-        
+
         # Otherwise, assume the line is a hostname or IP and ping it
         else
             call_ping $line
