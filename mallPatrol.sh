@@ -2,7 +2,7 @@
 # spell-checker:ignore noout
 
 __Author="Jerren Saunders"
-__Version=25.12.10
+__Version=25.12.11
 __ScriptName=$(basename "$0") # File name with extension
 __AppDir=$(dirname "$0") # Path where script is stored
 __AppName=${__ScriptName%.*} # File name without extension
@@ -32,6 +32,42 @@ FAIL_ANSI="\e[1;31m"
 
 PASS_MARK="$PASS_ANSI\u2713$ANSI_RST"
 FAIL_MARK="$FAIL_ANSI\u2717$ANSI_RST"
+
+function printUsage() {
+    includeAppInfo=${1}
+    cat <<EOT
+
+This script will perform health checks on a list of URLs and services defined in a text file.
+The default file name is 'urls.list', but a different file can be specified as an argument.
+
+Syntax:
+  ${__ScriptName} [-g groupname] [-f filename] [-v] [-h] [filename|groupname] 
+    -g groupname   Only process entries within the specified group
+    -f filename    Specify an alternate file containing the list of URLs and services to check
+    -v             Display the script version and exit
+    -h             Display this help message and exit
+
+List File:
+    The list file (default is 'urls.list') supports the following syntax:
+    
+    <ip|fqdn>                - Ping the specified host or IP address
+    <http <url>|https <url>> - Perform an HTTP GET request to the specified URL
+    <[Group Name]>           - Define a group header for organizing entries
+    <cert <server> [age]>    - Check the SSL certificate expiration date for the specified server
+                               The optional 'age' parameter specifies the warning threshold in days (default is 30)
+    <port <server> <port>>   - Check if the specified port is open on
+    <up <server>>            - Check the uptime of the specified server via SSH (should use SSH for auth)
+    <note <msg>>             - Print a note message in the output
+    <disk <server> [thresh]> - Check disk usage on the specified server via SSH
+                               The optional 'thresh' parameter specifies the Use% threshold (default is 80)
+EOT
+
+    if [[ ${includeAppInfo} ]]; then 
+        cat <<EOT
+Version: ${__Version}
+EOT
+    fi
+}
 
 ##
 # Sends a GET request to a given URL using curl and checks the HTTP response code.
@@ -257,10 +293,61 @@ call_ping() {
     printf '\n'
 }
 
-# Main function to iterate through file and call curl on each address
-main() {
-    # Check if a file name was provided as an alternative list
-    if [ $# -eq 0 ]; then
+##
+# Handles command line arguments and sets global variables accordingly
+#
+# Parameters:
+# - Always pass $@
+#
+process_cl_args() {
+    while getopts ":hvf:g:" opt; do
+        case $opt in
+            h)
+                printUsage true
+                exit 0
+                ;;
+            v)
+                echo "$__Version"
+                exit 0
+                ;;
+            f)
+                FILE=$OPTARG
+                ;;
+            g)
+                GROUP_NAME=$OPTARG
+                ;;
+            \?)
+                echo "Error: Invalid option -$OPTARG" >&2
+                echo "   Use '${__ScriptName} -h' to view usage information"
+                exit 1
+                ;;
+            :)
+                echo "Error: Option -$OPTARG requires an argument." >&2
+                echo "   Use '${__ScriptName} -h' to view usage information"
+                exit 1
+                ;;
+        esac
+    done
+
+    # Shift off the options and optional --
+    shift $((OPTIND -1))
+
+    # Remaining arguments are either file or group name
+    if [ $# -gt 1 ]; then
+        echo "Error: Too many arguments provided."
+        echo "   Use '${__ScriptName} -h' to view usage information"
+        exit 1    
+    elif [ $# -eq 1 ]; then
+        # Single argument provided, check if it is a file, otherwise treat as a group name
+        if [ -f "$1" ]; then 
+            FILE=$1
+        else
+            GROUP_NAME=$1
+        fi
+    fi
+
+    # Handle FILE path if not yet set
+    if [ -z "$FILE" ]; then
         # No arguments provided, check if a file with the default name exist in the current directory
         if [ -f "${PWD}/${DEFAULT_FILE}" ]; then
             # Using default file in current directory
@@ -270,19 +357,6 @@ main() {
         else
             FILE="${__AppDir}/${DEFAULT_FILE}"
         fi
-
-    # Check if help was requested
-    elif [ $# -eq 1 ] && [ "$1" == "-h" ]; then
-        echo "Usage: $0 [-h] [filename]"
-        exit 0
-    elif [ $# -eq 1 ] && [ "$1" == "-v" ]; then
-        echo "$__Version"
-        exit 0
-    elif [ $# -gt 2 ]; then
-        echo "Error: Too many arguments provided."
-        exit 1
-    else
-        FILE=$1
     fi
 
     # If file does not exist, exit
@@ -290,6 +364,12 @@ main() {
         echo "Error: File '$FILE' not found."
         exit 1
     fi
+}
+
+
+# Main function to iterate through file and call curl on each address
+main() {
+    process_cl_args $@
 
     # Print header
     printf "%-55s %s\n" "URL" "Response"
@@ -305,21 +385,33 @@ main() {
         # Ignore empty lines (reset if in a group)
         if [ -z "$line" ]; then
             # If inside a group, add an empty line
-            if [ "$inside_group" = true ]; then
+            if [ "$inside_group" = true ] && [ -z "$GROUP_NAME" ]; then
                 inside_group=false
                 echo ""
             fi
-
             continue
         fi
 
         # Group Headers - If the line starts with a '['
         if [[ $line =~ ^\[([^\]]*)\]$ ]]; then
             inside_group=true
+            current_group="${BASH_REMATCH[1]}"
+
+            # Skip printing the group header if a specific group name was specified
+            if [ -n "$GROUP_NAME" ]; then
+                continue
+            fi
+
+            # Print the group header
             echo ""
-            echo -e "$GROUP_ANSI${BASH_REMATCH[1]}:$ANSI_RST"
+            echo -e "$GROUP_ANSI${current_group}:$ANSI_RST"
             continue
         fi
+
+        # If a group name was specified, and we are not inside that group, skip the entry
+        if [ -n "$GROUP_NAME" ] && [ "$GROUP_NAME" != "$current_group" ]; then
+            continue
+        fi        
 
         # If inside a group, indent the result output
         printf "%s" "${inside_group:+  }"
@@ -351,7 +443,6 @@ main() {
         else
             call_ping $line
         fi
-
     done < "$FILE"
     printf "\n\n"
 
