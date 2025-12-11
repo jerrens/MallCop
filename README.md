@@ -9,7 +9,7 @@ This script reads a list of servers from a file (default is `urls.list`) and per
 ## Usage
 
 To use MallCop, download the latest version of `MallPatrol.sh` from this repo.
-Create a `urls.list` file in the same folder as the script and add entries of servers to monitor using the [Available Options](#available-options) listed below.
+Create a `urls.list` file in the same folder as the script and add entries of servers to monitor using the [List File Options](#list-file-options) listed below.
 Each entry should be on a separate line.
 Also, be sure the file ends with one or more empty lines (or the last line will not be properly parsed).
 
@@ -18,11 +18,21 @@ Successful test will be marked with a `✓` mark.
 If any errors were detected, the corresponding line will be marked with an `✗`.
 The details of the error will also be provided in a summary at the end of the tests in an `Errors:` section.
 
-## Available options
+### Command Line Arguments
+
+- `-g groupname`       Only process entries within the specified group
+- `-f filename`        Specify an alternate file containing the list of URLs and services to check
+- `-v`                 Display the script version and exit
+- `-h`                 Display this help message and exit
+- `filename|groupname` Specify a group name or a file name as a positional argument.
+
+ If no arguments are provided, then the default list file (`urls.list`) will be used and all groups will be traversed.
+
+## List File Options
 
 The following is a list of prefixes and options that are available for use in the list file provided to MallPatrol.
 
-## ping (Default)
+## IP | FQDN (ping)
 
 If a line only contains an IP address or a hostname (FQDN), then the provided value will be pinged for a response.
 A response of more than 1 seconds is considered an error.
@@ -30,7 +40,7 @@ A response of more than 1 seconds is considered an error.
 Example
 
 ```text
-192.168.51.49
+10.254.51.49
 host.domain.net
 ```
 
@@ -64,7 +74,7 @@ https://host.domain.net
 
 ### http | https
 
-Lines starting with 'http(s)' will use curl for the check.
+Lines starting with `http` or `https` will use curl for the check.
 If a status code other than 200 is expected, add it as the second word on the line.
 **NOTE**: Spaces in URLs must be html encoded
 
@@ -79,7 +89,7 @@ https://host.domain.net 202
 
 ### cert
 
-Lines starting with 'cert' followed by a hostname will retrieve the certificate expiration date for the given Server.
+Lines starting with `cert` followed by a hostname will retrieve the certificate expiration date for the given Server.
 A warning will be raise if the age less than 30 days.
 To change this default warning age, a second argument can be provided.
 
@@ -94,7 +104,7 @@ cert host.domain.net 90
 
 ### port
 
-Lines starting with 'port' will check if the specified port for the given Server is open
+Lines starting with `port` will check if the specified port for the given Server is open
 
 Example:
 
@@ -104,7 +114,7 @@ port host.domain.net 27017
 
 ### up
 
-Lines starting with 'up' will connect to the specified host (via SSH) and determine the uptime.
+Lines starting with `up` will connect to the specified host (via SSH) and determine the uptime.
 It is recommended that this only be done for machines where authentication can be done via SSH key.
 
 Example:
@@ -115,7 +125,7 @@ up host.domain.net
 
 ### disk
 
-Lines starting with 'disk' will connect to the specified host (via SSH) and determine the disk usage.
+Lines starting with `disk` will connect to the specified host (via SSH) and determine the disk usage.
 A third argument can be provided to change the default warning threshold of 80%.
 It is recommended that this only be done for machines where authentication can be done via SSH key.
 
