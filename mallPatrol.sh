@@ -2,7 +2,7 @@
 # spell-checker:ignore noout
 
 __Author="Jerren Saunders"
-__Version=25.12.11
+__Version=26.4.17
 __ScriptName=$(basename "$0") # File name with extension
 __AppDir=$(dirname "$0") # Path where script is stored
 __AppName=${__ScriptName%.*} # File name without extension
@@ -369,7 +369,7 @@ process_cl_args() {
 
 # Main function to iterate through file and call curl on each address
 main() {
-    process_cl_args $@
+    process_cl_args "$@"
 
     # Print header
     printf "%-55s %s\n" "URL" "Response"
