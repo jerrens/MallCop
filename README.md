@@ -22,6 +22,7 @@ The details of the error will also be provided in a summary at the end of the te
 
 - `-g groupname`       Only process entries within the specified group
 - `-f filename`        Specify an alternate file containing the list of URLs and services to check
+- `-l`                 List available group names in the selected list file and exit
 - `-v`                 Display the script version and exit
 - `-h`                 Display this help message and exit
 - `filename|groupname` Specify a group name or a file name as a positional argument.

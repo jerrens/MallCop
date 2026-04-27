@@ -2,7 +2,7 @@
 # spell-checker:ignore noout
 
 __Author="Jerren Saunders"
-__Version=26.4.17
+__Version=26.4.27
 __ScriptName=$(basename "$0") # File name with extension
 __AppDir=$(dirname "$0") # Path where script is stored
 __AppName=${__ScriptName%.*} # File name without extension
@@ -41,9 +41,10 @@ This script will perform health checks on a list of URLs and services defined in
 The default file name is 'urls.list', but a different file can be specified as an argument.
 
 Syntax:
-  ${__ScriptName} [-g groupname] [-f filename] [-v] [-h] [filename|groupname] 
+  ${__ScriptName} [-g groupname] [-f filename] [-l] [-v] [-h] [filename|groupname] 
     -g groupname   Only process entries within the specified group
     -f filename    Specify an alternate file containing the list of URLs and services to check
+    -l             List available group names in the selected list file and exit
     -v             Display the script version and exit
     -h             Display this help message and exit
 
@@ -300,11 +301,14 @@ call_ping() {
 # - Always pass $@
 #
 process_cl_args() {
-    while getopts ":hvf:g:" opt; do
+    while getopts ":hlvf:g:" opt; do
         case $opt in
             h)
                 printUsage true
                 exit 0
+                ;;
+            l)
+                LIST_GROUPS=true
                 ;;
             v)
                 echo "$__Version"
@@ -366,10 +370,44 @@ process_cl_args() {
     fi
 }
 
+##
+# Scans the selected list file and prints detected unique group names.
+#
+# Parameters:
+# - None (uses global FILE)
+#
+# Returns:
+# - None.
+list_group_names() {
+    declare -A seen_groups=()
+
+    while IFS= read -r line; do
+        # Ignore comments and empty lines
+        if [[ $line =~ ^# ]] || [ -z "$line" ]; then
+            continue
+        fi
+
+        if [[ $line =~ ^\[([^\]]*)\]$ ]]; then
+            current_group="${BASH_REMATCH[1]}"
+
+            # Skip blank group names and duplicates
+            if [ -n "$current_group" ] && [ -z "${seen_groups[$current_group]}" ]; then
+                seen_groups["$current_group"]=1
+                echo "  $current_group"
+            fi
+        fi
+    done < "$FILE"
+}
+
 
 # Main function to iterate through file and call curl on each address
 main() {
     process_cl_args "$@"
+
+    if [ "$LIST_GROUPS" = true ]; then
+        list_group_names
+        exit 0
+    fi
 
     # Print header
     printf "%-55s %s\n" "URL" "Response"
