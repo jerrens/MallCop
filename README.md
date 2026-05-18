@@ -1,6 +1,6 @@
 # Mall Cop
 
-## Monitoring and Alerting for Loading from a List - Central Observation Process
+## Monitoring and Alerting by Loading from a List - Central Observation Process
 
 This script reads a list of servers from a file (default is `urls.list`) and performs several common queries to  make sure the server is responding as expected.
 
