@@ -22,12 +22,40 @@ The details of the error will also be provided in a summary at the end of the te
 
 - `-g groupname`       Only process entries within the specified group
 - `-f filename`        Specify an alternate file containing the list of URLs and services to check
+- `-w target`          Wait for an IP/host/group to respond to ping (1x/sec). Press `q` to abort.
 - `-l`                 List available group names in the selected list file and exit
 - `-v`                 Display the script version and exit
 - `-h`                 Display this help message and exit
 - `filename|groupname` Specify a group name or a file name as a positional argument.
 
  If no arguments are provided, then the default list file (`urls.list`) will be used and all groups will be traversed.
+
+### Wait Mode (`-w`)
+
+Use wait mode when you want MallPatrol to ping a target until it comes online.
+
+- Pings once per second
+- Shows target and running ping attempt count
+- Press `q` to abort
+- On success, rings terminal bell 3 times with 1.25 second delay between rings
+
+Examples:
+
+```bash
+# Wait for a direct host/IP
+./mallPatrol.sh -w host.domain.net
+./mallPatrol.sh -w 10.1.2.3
+
+# Wait using a group name from a list file
+./mallPatrol.sh -w Production -f urls.list
+```
+
+Group resolution behavior:
+
+- If `-w` target matches a group name, the script searches that group for pingable entries only (bare host/IP lines).
+- Non-ping directives (`http`, `https`, `cert`, `port`, `up`, `disk`, `note`) are ignored for `-w` group resolution.
+- If matched group has zero pingable entries, command exits with error.
+- If matched group has more than one pingable entry, command exits with error and requires explicit host/IP.
 
 ## List File Options
 

@@ -2,7 +2,7 @@
 # spell-checker:ignore noout
 
 __Author="Jerren Saunders"
-__Version=26.4.27
+__Version=26.5.19
 __ScriptName=$(basename "$0") # File name with extension
 __AppDir=$(dirname "$0") # Path where script is stored
 __AppName=${__ScriptName%.*} # File name without extension
@@ -11,6 +11,7 @@ __origArgs=$* # Capture all of the original arguments
 
 # Default Settings
 DEFAULT_FILE="urls.list"
+WAIT_MODE=false
 
 GROUP_ANSI="\e[0;4;34m"
 PING_ANSI="\e[0;37m"
@@ -41,9 +42,10 @@ This script will perform health checks on a list of URLs and services defined in
 The default file name is 'urls.list', but a different file can be specified as an argument.
 
 Syntax:
-  ${__ScriptName} [-g groupname] [-f filename] [-l] [-v] [-h] [filename|groupname] 
+    ${__ScriptName} [-g groupname] [-f filename] [-w target] [-l] [-v] [-h] [filename|groupname] 
     -g groupname   Only process entries within the specified group
     -f filename    Specify an alternate file containing the list of URLs and services to check
+    -w target      Wait for ping success for an IP, hostname, or group name
     -l             List available group names in the selected list file and exit
     -v             Display the script version and exit
     -h             Display this help message and exit
@@ -61,6 +63,13 @@ List File:
     <note <msg>>             - Print a note message in the output
     <disk <server> [thresh]> - Check disk usage on the specified server via SSH
                                The optional 'thresh' parameter specifies the Use% threshold (default is 80)
+
+Wait Mode:
+    Use '-w target' to ping once per second until host responds.
+    If target matches a group name, only pingable entries are considered from the list file for that group.
+    The mode requires exactly one pingable host for a matched group.
+    If multiple are defined, you will need to explicitly provide the target server or IP with '-w <target>'.
+    Press 'q' to abort. On success, the terminal bell rings 3 times.
 EOT
 
     if [[ ${includeAppInfo} ]]; then 
@@ -294,6 +303,165 @@ call_ping() {
     printf '\n'
 }
 
+is_pingable_entry() {
+    entry="$1"
+
+    if [ -z "$entry" ] || [[ $entry =~ ^# ]]; then
+        return 1
+    fi
+
+    if [[ $entry =~ ^(http|https|cert|port|up|disk|note)([[:space:]]|$) ]]; then
+        return 1
+    fi
+
+    return 0
+}
+
+ring_success_bell() {
+    for i in 1 2 3; do
+        if command -v tput > /dev/null 2>&1; then
+            tput bel
+        else
+            printf '\a'
+        fi
+
+        if [ "$i" -lt 3 ]; then
+            sleep 1.25
+        fi
+    done
+}
+
+resolve_wait_target() {
+    requested_target="$1"
+    matched_group=false
+    in_matched_group=false
+    ip_targets=()
+    host_targets=()
+
+    while IFS= read -r line; do
+        # Group header
+        if [[ $line =~ ^\[([^\]]*)\]$ ]]; then
+            current_group="${BASH_REMATCH[1]}"
+            if [ "$current_group" = "$requested_target" ]; then
+                matched_group=true
+                in_matched_group=true
+            else
+                in_matched_group=false
+            fi
+            continue
+        fi
+
+        # End group on blank line
+        if [ -z "$line" ]; then
+            in_matched_group=false
+            continue
+        fi
+
+        # Only consider lines in matched group
+        if [ "$in_matched_group" = true ]; then
+            # Skip comments, directives, and lines with spaces
+            if [[ $line =~ ^# ]] || [[ $line =~ ^(http|https|cert|port|up|disk|note)([[:space:]]|$) ]] || [[ "$line" =~ " " ]]; then
+                continue
+            fi
+
+            # IP address regex (IPv4 only)
+            if [[ $line =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+                ip_targets+=("$line")
+            # Hostname (FQDN, not IP, no spaces)
+            elif [[ $line =~ ^[A-Za-z0-9.-]+$ ]]; then
+                host_targets+=("$line")
+            fi
+        fi
+    done < "$FILE"
+
+    if [ "$matched_group" = true ]; then
+        ip_count=${#ip_targets[@]}
+        host_count=${#host_targets[@]}
+
+        # No valid targets
+        if [ "$ip_count" -eq 0 ] && [ "$host_count" -eq 0 ]; then
+            echo "Error: Group '$requested_target' has no pingable host or IP entries."
+            return 2
+        fi
+
+        # If exactly 1 IP, use it
+        if [ "$ip_count" -eq 1 ] && [ "$host_count" -eq 0 ]; then
+            WAIT_RESOLVED_TARGET="${ip_targets[0]}"
+            return 0
+        fi
+        # If exactly 1 hostname, use it
+        if [ "$ip_count" -eq 0 ] && [ "$host_count" -eq 1 ]; then
+            WAIT_RESOLVED_TARGET="${host_targets[0]}"
+            return 0
+        fi
+        # If exactly 1 IP and 1 hostname, assume same, use IP
+        if [ "$ip_count" -eq 1 ] && [ "$host_count" -eq 1 ]; then
+            WAIT_RESOLVED_TARGET="${ip_targets[0]}"
+            return 0
+        fi
+        # If >1 IP or >1 hostname, error
+        echo "Error: Group '$requested_target' has too many pingable targets (IPs: $ip_count, hosts: $host_count)."
+        if [ "$ip_count" -gt 0 ]; then
+            echo "  IPs:"
+            for ip in "${ip_targets[@]}"; do
+                echo "    $ip"
+            done
+        fi
+        if [ "$host_count" -gt 0 ]; then
+            echo "  Hostnames:"
+            for host in "${host_targets[@]}"; do
+                echo "    $host"
+            done
+        fi
+        echo ""
+        echo "Use '-w <host>' with one explicit host or IP."
+        echo ""
+        return 2
+    fi
+
+    WAIT_RESOLVED_TARGET="$requested_target"
+    return 0
+}
+
+wait_for_ping_response() {
+    requested_target="$1"
+    ping_count=0
+
+    resolve_wait_target "$requested_target"
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        return "$rc"
+    fi
+
+    echo -e "${EXPECT_ANSI}Waiting for ping response from: ${WAIT_RESOLVED_TARGET}${ANSI_RST}"
+    echo "Press 'q' to abort."
+
+    # Disable terminal echo to absorb 'q' keypress
+    stty -echo
+
+    trap 'stty echo' EXIT  # Ensure echo is restored on exit
+
+    while true; do
+        if read -r -t 0.01 -n 1 -s key && [ "$key" = "q" ]; then
+            printf "\nAborted.\n"
+            stty echo  # Restore echo before exiting
+            return 1
+        fi
+
+        ping_count=$((ping_count + 1))
+        printf "\r${PING_ANSI}Target: %s | Ping attempts: %d${ANSI_RST}" "$WAIT_RESOLVED_TARGET" "$ping_count"
+
+        if ping -W1 -c1 "$WAIT_RESOLVED_TARGET" > /dev/null 2>&1; then
+            printf "\n$PASS_MARK Host responded after %d attempt(s).\n" "$ping_count"
+            ring_success_bell
+            return 0
+        fi
+    done
+
+    # Restore terminal echo explicitly in case of normal exit
+    stty echo
+}
+
 ##
 # Handles command line arguments and sets global variables accordingly
 #
@@ -301,7 +469,7 @@ call_ping() {
 # - Always pass $@
 #
 process_cl_args() {
-    while getopts ":hlvf:g:" opt; do
+    while getopts ":hlvf:g:w:" opt; do
         case $opt in
             h)
                 printUsage true
@@ -320,6 +488,10 @@ process_cl_args() {
             g)
                 GROUP_NAME=$OPTARG
                 ;;
+            w)
+                WAIT_MODE=true
+                WAIT_TARGET=$OPTARG
+                ;;
             \?)
                 echo "Error: Invalid option -$OPTARG" >&2
                 echo "   Use '${__ScriptName} -h' to view usage information"
@@ -336,12 +508,28 @@ process_cl_args() {
     # Shift off the options and optional --
     shift $((OPTIND -1))
 
+    if [ "$WAIT_MODE" = true ] && [ "$LIST_GROUPS" = true ]; then
+        echo "Error: Options '-w' and '-l' cannot be used together."
+        exit 1
+    fi
+
+    if [ "$WAIT_MODE" = true ] && [ -n "$GROUP_NAME" ]; then
+        echo "Error: Option '-g' cannot be used with '-w'."
+        exit 1
+    fi
+
+    if [ "$WAIT_MODE" = true ] && [ $# -gt 0 ]; then
+        echo "Error: Positional arguments are not supported with '-w'."
+        echo "   Use '-w <target>' and optional '-f <filename>'."
+        exit 1
+    fi
+
     # Remaining arguments are either file or group name
-    if [ $# -gt 1 ]; then
+    if [ "$WAIT_MODE" != true ] && [ $# -gt 1 ]; then
         echo "Error: Too many arguments provided."
         echo "   Use '${__ScriptName} -h' to view usage information"
         exit 1    
-    elif [ $# -eq 1 ]; then
+    elif [ "$WAIT_MODE" != true ] && [ $# -eq 1 ]; then
         # Single argument provided, check if it is a file, otherwise treat as a group name
         if [ -f "$1" ]; then 
             FILE=$1
@@ -403,6 +591,11 @@ list_group_names() {
 # Main function to iterate through file and call curl on each address
 main() {
     process_cl_args "$@"
+
+    if [ "$WAIT_MODE" = true ]; then
+        wait_for_ping_response "$WAIT_TARGET"
+        exit $?
+    fi
 
     if [ "$LIST_GROUPS" = true ]; then
         list_group_names
