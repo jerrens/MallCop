@@ -2,7 +2,7 @@
 # spell-checker:ignore noout
 
 __Author="Jerren Saunders"
-__Version=26.5.19
+__Version=26.6.30
 __ScriptName=$(basename "$0") # File name with extension
 __AppDir=$(dirname "$0") # Path where script is stored
 __AppName=${__ScriptName%.*} # File name without extension
@@ -53,16 +53,17 @@ Syntax:
 List File:
     The list file (default is 'urls.list') supports the following syntax:
     
-    <ip|fqdn>                - Ping the specified host or IP address
-    <http <url>|https <url>> - Perform an HTTP GET request to the specified URL
-    <[Group Name]>           - Define a group header for organizing entries
-    <cert <server> [age]>    - Check the SSL certificate expiration date for the specified server
-                               The optional 'age' parameter specifies the warning threshold in days (default is 30)
-    <port <server> <port>>   - Check if the specified port is open on
-    <up <server>>            - Check the uptime of the specified server via SSH (should use SSH for auth)
-    <note <msg>>             - Print a note message in the output
-    <disk <server> [thresh]> - Check disk usage on the specified server via SSH
-                               The optional 'thresh' parameter specifies the Use% threshold (default is 80)
+    <ip|fqdn>                    - Ping the specified host or IP address
+    <http <url>|https <url>>     - Perform an HTTP GET request to the specified URL
+    <[Group Name]>               - Define a group header for organizing entries
+    <cert <server> [age] [port]> - Check the SSL certificate expiration date for the specified server
+                                   The optional 'age' parameter specifies the warning threshold in days (default is 30)
+                                   The optional 'port' parameter specifies the TLS port to check (default is 443)
+    <port <server> <port>>       - Check if the specified port is open on
+    <up <server>>                - Check the uptime of the specified server via SSH (should use SSH for auth)
+    <note <msg>>                 - Print a note message in the output
+    <disk <server> [thresh]>     - Check disk usage on the specified server via SSH
+                                   The optional 'thresh' parameter specifies the Use% threshold (default is 80)
 
 Wait Mode:
     Use '-w target' to ping once per second until host responds.
@@ -118,12 +119,14 @@ call_curl() {
 # Parameters:
 # - server: The server name to retrive the certificate for
 # - warning_age (optional): The age at which a warning should be raised. Defaults to 30.
+# - cert_port (optional): The TLS port to query. Defaults to 443.
 #
 # Returns:
 # - None
 certificate_check() {
     server_name=$2
     warning_age=${3:-30}
+    cert_port=${4:-443}
 
     # Adjust padding for indentation
     printf "${CERT_ANSI}"
@@ -134,7 +137,7 @@ certificate_check() {
     fi
     printf "${ANSI_RST}    "
 
-    response=$(echo | timeout 5 openssl s_client -servername $server_name -connect $server_name:443 2>/dev/null | openssl x509 -noout -enddate)
+    response=$(echo | timeout 5 openssl s_client -servername "$server_name" -connect "$server_name:$cert_port" 2>/dev/null | openssl x509 -noout -enddate)
     # response = "notAfter=Feb 27 20:26:32 2028 GMT"
 
     # Extract the date string from 'notAfter='
