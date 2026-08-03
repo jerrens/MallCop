@@ -2,7 +2,7 @@
 # spell-checker:ignore noout
 
 __Author="Jerren Saunders"
-__Version=26.6.30
+__Version=26.8.3
 __ScriptName=$(basename "$0") # File name with extension
 __AppDir=$(dirname "$0") # Path where script is stored
 __AppName=${__ScriptName%.*} # File name without extension
@@ -10,8 +10,10 @@ __origArgs=$* # Capture all of the original arguments
 
 
 # Default Settings
+VERBOSE=0
 DEFAULT_FILE="urls.list"
 WAIT_MODE=false
+DNS_TIMEOUT=2 # Per-query dig timeout in seconds; slow responses count as failures
 
 GROUP_ANSI="\e[0;4;34m"
 PING_ANSI="\e[0;37m"
@@ -20,6 +22,7 @@ CERT_ANSI="\e[0;37m"
 PORT_ANSI="\e[0;37m"
 UP_ANSI="\e[0;37m"
 DISK_ANSI="\e[0;37m"
+DNS_ANSI="\e[0;37m"
 NOTE_ANSI="\e[2;3;32m"
 EXPECT_ANSI="\e[1;35m"
 ANSI_RST="\e[0m"
@@ -42,10 +45,11 @@ This script will perform health checks on a list of URLs and services defined in
 The default file name is 'urls.list', but a different file can be specified as an argument.
 
 Syntax:
-    ${__ScriptName} [-g groupname] [-f filename] [-w target] [-l] [-v] [-h] [filename|groupname] 
+    ${__ScriptName} [-g groupname] [-f filename] [-w target] [-d hostname] [-l] [-v] [-h] [filename|groupname] 
     -g groupname   Only process entries within the specified group
     -f filename    Specify an alternate file containing the list of URLs and services to check
     -w target      Wait for ping success for an IP, hostname, or group name
+    -d hostname    Perform a one-off DNS resolution check for the specified host and exit
     -l             List available group names in the selected list file and exit
     -v             Display the script version and exit
     -h             Display this help message and exit
@@ -64,6 +68,8 @@ List File:
     <note <msg>>                 - Print a note message in the output
     <disk <server> [thresh]>     - Check disk usage on the specified server via SSH
                                    The optional 'thresh' parameter specifies the Use% threshold (default is 80)
+    <dns <hostname>>             - Query each authoritative NS server for the host's parent zone
+                                   and report how many resolve the host (e.g. host 30/30)
 
 Wait Mode:
     Use '-w target' to ping once per second until host responds.
@@ -77,6 +83,23 @@ EOT
         cat <<EOT
 Version: ${__Version}
 EOT
+    fi
+}
+
+# Prints log message to the terminal
+# Level 0 are considered "important" messages and will be printed to stdout, while levels 1 and above are considered "debug" messages and will be printed to stderr
+#  <int> lvl - Print Level: Only print this message if the VERBOSE level is greater than or equal to this
+#  <string> msg - Message to print
+function log() {
+    local lvl=$1
+    local msg=$2
+
+    if (( lvl <= VERBOSE )); then
+        if (( lvl == 0 )); then
+            echo -e "$msg"
+        else
+            echo -e "$msg" >&2
+        fi
     fi
 }
 
@@ -306,6 +329,61 @@ call_ping() {
     printf '\n'
 }
 
+##
+# Checks how many authoritative NS servers resolve the given host.
+# The parent zone is derived by stripping the two leftmost labels from the host.
+#
+# Parameters:
+# - server: The hostname to resolve
+#
+# Returns:
+# - None
+dns_check() {
+    server_name=$2
+
+    # Auto-discover the delegated zone: strip one label at a time until NS records appear
+    zone="${server_name#*.}"
+    ns_list=$(dig +time="$DNS_TIMEOUT" +tries=1 +short NS "$zone")
+    while [ -z "$ns_list" ] && [[ "$zone" == *.* ]]; do
+        zone="${zone#*.}"
+        ns_list=$(dig +time="$DNS_TIMEOUT" +tries=1 +short NS "$zone")
+    done
+
+    # Adjust padding for indentation
+    printf "${DNS_ANSI}"
+    if [ "$inside_group" = true ]; then
+        printf "%-53.53s " "$server_name"
+    else
+        printf "%-55.55s " "$server_name"
+    fi
+    printf "${ANSI_RST}    "
+
+    resolved=0
+    total=0
+    for dns in $ns_list; do
+        total=$((total + 1))
+        dig +time="$DNS_TIMEOUT" +tries=1 +short "$server_name" @"$dns" | grep -q .
+        if [ $? -gt 0 ]; then
+            log 1 "$(printf '     %-50s %s' "$dns" "Failed")"
+        else
+            resolved=$((resolved + 1))
+            log 2 "$(printf '     %-50s %s' "$dns" "Resolved")"
+        fi
+    done
+
+    if [ "$total" -eq 0 ]; then
+        printf "$FAIL_MARK"
+        errors+=("   No NS servers found for zone $zone (host $server_name)")
+    elif [ "$resolved" -eq "$total" ]; then
+        printf "$PASS_MARK"
+    else
+        printf "$FAIL_MARK"
+        errors+=("   DNS resolution for $server_name: $resolved/$total NS servers resolved")
+    fi
+    printf "  ${EXPECT_ANSI}%s/%s${ANSI_RST}" "$resolved" "$total"
+    printf '\n'
+}
+
 is_pingable_entry() {
     entry="$1"
 
@@ -313,7 +391,7 @@ is_pingable_entry() {
         return 1
     fi
 
-    if [[ $entry =~ ^(http|https|cert|port|up|disk|note)([[:space:]]|$) ]]; then
+    if [[ $entry =~ ^(http|https|cert|port|up|disk|note|dns)([[:space:]]|$) ]]; then
         return 1
     fi
 
@@ -363,7 +441,7 @@ resolve_wait_target() {
         # Only consider lines in matched group
         if [ "$in_matched_group" = true ]; then
             # Skip comments, directives, and lines with spaces
-            if [[ $line =~ ^# ]] || [[ $line =~ ^(http|https|cert|port|up|disk|note)([[:space:]]|$) ]] || [[ "$line" =~ " " ]]; then
+            if [[ $line =~ ^# ]] || [[ $line =~ ^(http|https|cert|port|up|disk|note|dns)([[:space:]]|$) ]] || [[ "$line" =~ " " ]]; then
                 continue
             fi
 
@@ -472,7 +550,7 @@ wait_for_ping_response() {
 # - Always pass $@
 #
 process_cl_args() {
-    while getopts ":hlvf:g:w:" opt; do
+    while getopts ":hlvf:g:w:d:" opt; do
         case $opt in
             h)
                 printUsage true
@@ -495,6 +573,10 @@ process_cl_args() {
                 WAIT_MODE=true
                 WAIT_TARGET=$OPTARG
                 ;;
+            d)
+                DNS_MODE=true
+                DNS_TARGET=$OPTARG
+                ;;
             \?)
                 echo "Error: Invalid option -$OPTARG" >&2
                 echo "   Use '${__ScriptName} -h' to view usage information"
@@ -510,6 +592,22 @@ process_cl_args() {
 
     # Shift off the options and optional --
     shift $((OPTIND -1))
+
+    if [ "$DNS_MODE" = true ] && { [ "$WAIT_MODE" = true ] || [ "$LIST_GROUPS" = true ] || [ -n "$GROUP_NAME" ]; }; then
+        echo "Error: Option '-d' cannot be used with '-w', '-l', or '-g'."
+        exit 1
+    fi
+
+    if [ "$DNS_MODE" = true ] && [ $# -gt 0 ]; then
+        echo "Error: Positional arguments are not supported with '-d'."
+        echo "   Use '-d <hostname>'."
+        exit 1
+    fi
+
+    # DNS mode is a one-off check and does not require a list file
+    if [ "$DNS_MODE" = true ]; then
+        return 0
+    fi
 
     if [ "$WAIT_MODE" = true ] && [ "$LIST_GROUPS" = true ]; then
         echo "Error: Options '-w' and '-l' cannot be used together."
@@ -600,6 +698,17 @@ main() {
         exit $?
     fi
 
+    if [ "$DNS_MODE" = true ]; then
+        printf "%-55s %s\n" "Host" "DNS Resolution"
+        echo "----------------------------------------------------------------------"
+        dns_check dns "$DNS_TARGET"
+        printf "\n"
+        if [ "${#errors[@]}" -gt 0 ]; then
+            exit "${#errors[@]}"
+        fi
+        exit 0
+    fi
+
     if [ "$LIST_GROUPS" = true ]; then
         list_group_names
         exit 0
@@ -669,6 +778,10 @@ main() {
         # Disk Usage
         elif [[ $line =~ ^disk ]]; then
             get_diskusage $line
+
+        # DNS Resolution Check
+        elif [[ $line =~ ^dns ]]; then
+            dns_check $line
 
         elif [[ $line =~ ^note ]]; then
             echo -e "$NOTE_ANSI# ${line#* }$ANSI_RST"
