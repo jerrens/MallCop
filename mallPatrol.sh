@@ -51,7 +51,7 @@ Syntax:
     -w target      Wait for ping success for an IP, hostname, or group name
     -d hostname    Perform a one-off DNS resolution check for the specified host and exit
     -l             List available group names in the selected list file and exit
-    -v             Display the script version and exit
+    -v             Increase verbosity; repeat to raise the level (-v=1, -vv=2, -vvv=3, ...)
     -h             Display this help message and exit
 
 List File:
@@ -560,8 +560,7 @@ process_cl_args() {
                 LIST_GROUPS=true
                 ;;
             v)
-                echo "$__Version"
-                exit 0
+                (( VERBOSE++ ))
                 ;;
             f)
                 FILE=$OPTARG
