@@ -352,11 +352,16 @@ dns_check() {
     # Adjust padding for indentation
     printf "${DNS_ANSI}"
     if [ "$inside_group" = true ]; then
-        printf "%-53.53s " "$server_name"
+        printf "%-53.53s " "DNS $server_name"
     else
-        printf "%-55.55s " "$server_name"
+        printf "%-55.55s " "DNS $server_name"
     fi
     printf "${ANSI_RST}    "
+
+    # Verbose: break the line so the per-host results print below the hostname
+    if (( VERBOSE >= 1 )); then
+        printf "${NOTE_ANSI}Scanning...${ANSI_RST}\n"
+    fi
 
     resolved=0
     total=0
@@ -364,12 +369,23 @@ dns_check() {
         total=$((total + 1))
         dig +time="$DNS_TIMEOUT" +tries=1 +short "$server_name" @"$dns" | grep -q .
         if [ $? -gt 0 ]; then
-            log 1 "$(printf '     %-50s %s' "$dns" "Failed")"
+            log 1 "$(printf '     %-54s %s' "$dns" "Failed")"
         else
             resolved=$((resolved + 1))
-            log 2 "$(printf '     %-50s %s' "$dns" "Resolved")"
+            log 2 "$(printf '     %-54s %s' "$dns" "Resolved")"
         fi
     done
+
+    # Verbose: reprint the hostname so the summary lands on its own clean line
+    if (( VERBOSE >= 1 )); then
+        printf "${DNS_ANSI}"
+        if [ "$inside_group" = true ]; then
+            printf "%-53.53s " "$server_name"
+        else
+            printf "%-55.55s " "$server_name"
+        fi
+        printf "${ANSI_RST}    "
+    fi
 
     if [ "$total" -eq 0 ]; then
         printf "$FAIL_MARK"
