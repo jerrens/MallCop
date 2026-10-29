@@ -42,7 +42,11 @@ function printUsage() {
     includeAppInfo=${1}
     cat <<EOT
 
-This script will perform health checks on a list of URLs and services defined in a text file.
+MallPatrol checks your infrastructure and reports what is healthy and what is not.
+Checks are defined in a text file and can cover ping reachability, HTTP(S) status codes,
+TLS certificate expiry, open ports, server uptime, disk usage, and DNS resolution.
+Entries can be organized into groups, and one or more groups can be checked at a time.
+It can also wait for a host to come online (-w) or run a one-off DNS check (-d).
 The default file name is 'urls.list', but a different file can be specified as an argument.
 
 Syntax:
