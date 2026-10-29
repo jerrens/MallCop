@@ -739,7 +739,7 @@ main() {
     fi
 
     # Print header
-    printf "%-55s %s\n" "URL" "Response"
+    printf "%-55s %s\n" "Target" "Response"
     echo "----------------------------------------------------------------------"
 
     if [ ${#GROUP_NAMES[@]} -eq 0 ]; then
