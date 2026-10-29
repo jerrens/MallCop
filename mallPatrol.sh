@@ -45,14 +45,15 @@ This script will perform health checks on a list of URLs and services defined in
 The default file name is 'urls.list', but a different file can be specified as an argument.
 
 Syntax:
-    ${__ScriptName} [-g groupname] [-f filename] [-w target] [-d hostname] [-l] [-v] [-h] [filename|groupname] 
+    ${__ScriptName} [-g groupname] [-f filename] [-w target] [-d hostname] [-l] [-v] [-h|--help] [--version] [filename|groupname] 
     -g groupname   Only process entries within the specified group
     -f filename    Specify an alternate file containing the list of URLs and services to check
     -w target      Wait for ping success for an IP, hostname, or group name
     -d hostname    Perform a one-off DNS resolution check for the specified host and exit
     -l             List available group names in the selected list file and exit
     -v             Increase verbosity; repeat to raise the level (-v=1, -vv=2, -vvv=3, ...)
-    -h             Display this help message and exit
+    -h, --help     Display this help message and exit
+    --version      Display the script version and exit
 
 List File:
     The list file (default is 'urls.list') supports the following syntax:
@@ -566,12 +567,22 @@ wait_for_ping_response() {
 # - Always pass $@
 #
 process_cl_args() {
-    while getopts ":hlvf:g:w:d:" opt; do
-        case $opt in
-            h)
+    local arg
+    for arg in "$@"; do
+        case $arg in
+            -h|--help)
                 printUsage true
                 exit 0
                 ;;
+            --version)
+                echo "$__Version"
+                exit 0
+                ;;
+        esac
+    done
+
+    while getopts ":lvf:g:w:d:" opt; do
+        case $opt in
             l)
                 LIST_GROUPS=true
                 ;;
