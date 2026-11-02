@@ -1,0 +1,29 @@
+# MallPatrol test fixture. {{PLACEHOLDERS}} are replaced by test.py before each run.
+# Keep groups separated by blank lines and end the file with a blank line.
+
+[ping]
+127.0.0.1
+
+[ping_fail]
+nonexistent.invalid
+
+[http]
+note Local HTTP server
+http://127.0.0.1:{{HTTP_PORT}}/200
+http://127.0.0.1:{{HTTP_PORT}}/404 404
+
+[http_fail]
+http://127.0.0.1:{{HTTP_PORT}}/500
+http://127.0.0.1:{{HTTP_PORT}}/200 404
+
+[port]
+port 127.0.0.1 {{OPEN_PORT}}
+
+[port_fail]
+port 127.0.0.1 {{CLOSED_PORT}}
+
+[network]
+https://www.google.com
+cert example.com 1
+dns www.example.com
+

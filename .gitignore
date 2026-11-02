@@ -1,3 +1,4 @@
 **/*.patch
 !urls.example.list
 **/*.list
+!test/test.list

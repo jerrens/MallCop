@@ -2,7 +2,7 @@
 # spell-checker:ignore noout
 
 __Author="Jerren Saunders"
-__Version=26.8.3
+__Version=26.11.2
 __ScriptName=$(basename "$0") # File name with extension
 __AppDir=$(dirname "$0") # Path where script is stored
 __AppName=${__ScriptName%.*} # File name without extension
@@ -13,6 +13,7 @@ __origArgs=$* # Capture all of the original arguments
 VERBOSE=0
 DEFAULT_FILE="urls.list"
 WAIT_MODE=false
+GROUP_NAMES=()
 DNS_TIMEOUT=2 # Per-query dig timeout in seconds; slow responses count as failures
 
 GROUP_ANSI="\e[0;4;34m"
@@ -41,18 +42,24 @@ function printUsage() {
     includeAppInfo=${1}
     cat <<EOT
 
-This script will perform health checks on a list of URLs and services defined in a text file.
+MallPatrol checks your infrastructure and reports what is healthy and what is not.
+Checks are defined in a text file and can cover ping reachability, HTTP(S) status codes,
+TLS certificate expiry, open ports, server uptime, disk usage, and DNS resolution.
+Entries can be organized into groups, and one or more groups can be checked at a time.
+It can also wait for a host to come online (-w) or run a one-off DNS check (-d).
 The default file name is 'urls.list', but a different file can be specified as an argument.
 
 Syntax:
-    ${__ScriptName} [-g groupname] [-f filename] [-w target] [-d hostname] [-l] [-v] [-h] [filename|groupname] 
-    -g groupname   Only process entries within the specified group
-    -f filename    Specify an alternate file containing the list of URLs and services to check
-    -w target      Wait for ping success for an IP, hostname, or group name
-    -d hostname    Perform a one-off DNS resolution check for the specified host and exit
-    -l             List available group names in the selected list file and exit
-    -v             Increase verbosity; repeat to raise the level (-v=1, -vv=2, -vvv=3, ...)
-    -h             Display this help message and exit
+    ${__ScriptName} [-g groupname]... [-f filename] [-w target] [-d hostname] [-l] [-v] [-h|--help] [--version] [filename|groupname...] 
+    -g, --group groupname   Only process entries within the specified group; may be repeated
+    -f, --file filename     Specify an alternate file containing the list of URLs and services to check
+    -w, --wait target       Wait for ping success for an IP, hostname, or group name
+    -d, --dns hostname      Perform a one-off DNS resolution check for the specified host and exit
+    -l, --list              List available group names in the selected list file and exit
+    -v                      Increase verbosity; repeat to raise the level (-v=1, -vv=2, -vvv=3, ...)
+    -h, --help              Display this help message and exit
+    --version               Display the script version and exit
+                            Value options accept either '-g name' or '-g=name' (same for long forms)
 
 List File:
     The list file (default is 'urls.list') supports the following syntax:
@@ -559,6 +566,30 @@ wait_for_ping_response() {
     stty echo
 }
 
+# Prints a command line error and exits
+arg_error() {
+    echo "Error: $1" >&2
+    echo "   Use '${__ScriptName} -h' to view usage information" >&2
+    exit 1
+}
+
+##
+# Sets 'val' for the current value option in process_cl_args and 'consumed' to how many args to shift.
+# Uses the inline '=value' when present, otherwise the next argument.
+#
+# Parameters:
+# - Pass the remaining arguments ($@)
+take_value() {
+    if [ "$has_val" = true ]; then
+        consumed=0
+    elif [ $# -gt 0 ]; then
+        val=$1
+        consumed=1
+    else
+        arg_error "Option $arg requires an argument."
+    fi
+}
+
 ##
 # Handles command line arguments and sets global variables accordingly
 #
@@ -566,49 +597,73 @@ wait_for_ping_response() {
 # - Always pass $@
 #
 process_cl_args() {
-    while getopts ":hlvf:g:w:d:" opt; do
-        case $opt in
-            h)
+    local arg val has_val consumed
+    local positional=()
+
+    while [ $# -gt 0 ]; do
+        arg=$1
+        shift
+        has_val=false
+
+        # Split '--opt=value' / '-o=value' for options that take a value
+        case $arg in
+            -[gfwd]=*|--group=*|--file=*|--wait=*|--dns=*)
+                val=${arg#*=}
+                arg=${arg%%=*}
+                has_val=true
+                ;;
+        esac
+
+        case $arg in
+            -g|--group)
+                take_value "$@"; shift "$consumed"
+                GROUP_NAMES+=("$val")
+                ;;
+            -f|--file)
+                take_value "$@"; shift "$consumed"
+                FILE=$val
+                ;;
+            -w|--wait)
+                take_value "$@"; shift "$consumed"
+                WAIT_MODE=true
+                WAIT_TARGET=$val
+                ;;
+            -d|--dns)
+                take_value "$@"; shift "$consumed"
+                DNS_MODE=true
+                DNS_TARGET=$val
+                ;;
+            -l|--list)
+                LIST_GROUPS=true
+                ;;
+            -v*)
+                [[ $arg =~ ^-v+$ ]] || arg_error "Invalid option $arg"
+                (( VERBOSE += ${#arg} - 1 ))
+                ;;
+            -h|--help)
                 printUsage true
                 exit 0
                 ;;
-            l)
-                LIST_GROUPS=true
+            --version)
+                echo "$__Version"
+                exit 0
                 ;;
-            v)
-                (( VERBOSE++ ))
+            --)
+                positional+=("$@")
+                break
                 ;;
-            f)
-                FILE=$OPTARG
+            -?*)
+                arg_error "Invalid option $arg"
                 ;;
-            g)
-                GROUP_NAME=$OPTARG
-                ;;
-            w)
-                WAIT_MODE=true
-                WAIT_TARGET=$OPTARG
-                ;;
-            d)
-                DNS_MODE=true
-                DNS_TARGET=$OPTARG
-                ;;
-            \?)
-                echo "Error: Invalid option -$OPTARG" >&2
-                echo "   Use '${__ScriptName} -h' to view usage information"
-                exit 1
-                ;;
-            :)
-                echo "Error: Option -$OPTARG requires an argument." >&2
-                echo "   Use '${__ScriptName} -h' to view usage information"
-                exit 1
+            *)
+                positional+=("$arg")
                 ;;
         esac
     done
 
-    # Shift off the options and optional --
-    shift $((OPTIND -1))
+    set -- "${positional[@]}"
 
-    if [ "$DNS_MODE" = true ] && { [ "$WAIT_MODE" = true ] || [ "$LIST_GROUPS" = true ] || [ -n "$GROUP_NAME" ]; }; then
+    if [ "$DNS_MODE" = true ] && { [ "$WAIT_MODE" = true ] || [ "$LIST_GROUPS" = true ] || [ ${#GROUP_NAMES[@]} -gt 0 ]; }; then
         echo "Error: Option '-d' cannot be used with '-w', '-l', or '-g'."
         exit 1
     fi
@@ -629,7 +684,7 @@ process_cl_args() {
         exit 1
     fi
 
-    if [ "$WAIT_MODE" = true ] && [ -n "$GROUP_NAME" ]; then
+    if [ "$WAIT_MODE" = true ] && [ ${#GROUP_NAMES[@]} -gt 0 ]; then
         echo "Error: Option '-g' cannot be used with '-w'."
         exit 1
     fi
@@ -640,18 +695,15 @@ process_cl_args() {
         exit 1
     fi
 
-    # Remaining arguments are either file or group name
-    if [ "$WAIT_MODE" != true ] && [ $# -gt 1 ]; then
-        echo "Error: Too many arguments provided."
-        echo "   Use '${__ScriptName} -h' to view usage information"
-        exit 1    
-    elif [ "$WAIT_MODE" != true ] && [ $# -eq 1 ]; then
-        # Single argument provided, check if it is a file, otherwise treat as a group name
-        if [ -f "$1" ]; then 
-            FILE=$1
-        else
-            GROUP_NAME=$1
-        fi
+    # Remaining arguments are either a file or group names
+    if [ "$WAIT_MODE" != true ]; then
+        for arg in "$@"; do
+            if [ -f "$arg" ]; then
+                FILE=$arg
+            else
+                GROUP_NAMES+=("$arg")
+            fi
+        done
     fi
 
     # Handle FILE path if not yet set
@@ -730,10 +782,38 @@ main() {
     fi
 
     # Print header
-    printf "%-55s %s\n" "URL" "Response"
+    printf "%-55s %s\n" "Target" "Response"
     echo "----------------------------------------------------------------------"
 
-    # Now, loop through each line in the file and perform the desired action
+    if [ ${#GROUP_NAMES[@]} -eq 0 ]; then
+        process_list_file ""
+    else
+        for GROUP_NAME in "${GROUP_NAMES[@]}"; do
+            process_list_file "$GROUP_NAME"
+        done
+    fi
+    printf "\n\n"
+
+    # Report errors if any were found
+    if [ "${#errors[@]}" -gt 0 ]; then
+        echo -e "${ERROR_HEADER_ANSI}Errors:${ERROR_ANSI}"
+        for err in "${errors[@]}"; do
+            echo -e "$err"
+        done
+        echo -e $ANSI_RST
+        exit "${#errors[@]}"
+    fi
+
+    exit 0
+}
+
+##
+# Runs the checks in the list file, limited to GROUP_NAME when it is set
+process_list_file() {
+    GROUP_NAME=$1
+    inside_group=false
+    current_group=""
+
     while IFS= read -r line; do
         # Ignore comments
         if [[ $line =~ ^# ]]; then
@@ -742,10 +822,12 @@ main() {
 
         # Ignore empty lines (reset if in a group)
         if [ -z "$line" ]; then
-            # If inside a group, add an empty line
-            if [ "$inside_group" = true ] && [ -z "$GROUP_NAME" ]; then
+            # If inside a group, add an empty line (only for groups being shown)
+            if [ "$inside_group" = true ]; then
                 inside_group=false
-                echo ""
+                if [ -z "$GROUP_NAME" ] || [ "$GROUP_NAME" = "$current_group" ]; then
+                    echo ""
+                fi
             fi
             continue
         fi
@@ -755,8 +837,8 @@ main() {
             inside_group=true
             current_group="${BASH_REMATCH[1]}"
 
-            # Skip printing the group header if a specific group name was specified
-            if [ -n "$GROUP_NAME" ]; then
+            # Skip headers of groups that were not requested
+            if [ -n "$GROUP_NAME" ] && [ "$GROUP_NAME" != "$current_group" ]; then
                 continue
             fi
 
@@ -806,19 +888,6 @@ main() {
             call_ping $line
         fi
     done < "$FILE"
-    printf "\n\n"
-
-    # Report errors if any were found
-    if [ "${#errors[@]}" -gt 0 ]; then
-        echo -e "${ERROR_HEADER_ANSI}Errors:${ERROR_ANSI}"
-        for err in "${errors[@]}"; do
-            echo -e "$err"
-        done
-        echo -e $ANSI_RST
-        exit "${#errors[@]}"
-    fi
-
-    exit 0
 }
 
 main "$@"
