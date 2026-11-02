@@ -2,7 +2,7 @@
 # spell-checker:ignore noout
 
 __Author="Jerren Saunders"
-__Version=26.10.29
+__Version=26.11.2
 __ScriptName=$(basename "$0") # File name with extension
 __AppDir=$(dirname "$0") # Path where script is stored
 __AppName=${__ScriptName%.*} # File name without extension
@@ -51,14 +51,15 @@ The default file name is 'urls.list', but a different file can be specified as a
 
 Syntax:
     ${__ScriptName} [-g groupname]... [-f filename] [-w target] [-d hostname] [-l] [-v] [-h|--help] [--version] [filename|groupname...] 
-    -g groupname   Only process entries within the specified group; may be repeated
-    -f filename    Specify an alternate file containing the list of URLs and services to check
-    -w target      Wait for ping success for an IP, hostname, or group name
-    -d hostname    Perform a one-off DNS resolution check for the specified host and exit
-    -l             List available group names in the selected list file and exit
-    -v             Increase verbosity; repeat to raise the level (-v=1, -vv=2, -vvv=3, ...)
-    -h, --help     Display this help message and exit
-    --version      Display the script version and exit
+    -g, --group groupname   Only process entries within the specified group; may be repeated
+    -f, --file filename     Specify an alternate file containing the list of URLs and services to check
+    -w, --wait target       Wait for ping success for an IP, hostname, or group name
+    -d, --dns hostname      Perform a one-off DNS resolution check for the specified host and exit
+    -l, --list              List available group names in the selected list file and exit
+    -v                      Increase verbosity; repeat to raise the level (-v=1, -vv=2, -vvv=3, ...)
+    -h, --help              Display this help message and exit
+    --version               Display the script version and exit
+                            Value options accept either '-g name' or '-g=name' (same for long forms)
 
 List File:
     The list file (default is 'urls.list') supports the following syntax:
@@ -565,6 +566,30 @@ wait_for_ping_response() {
     stty echo
 }
 
+# Prints a command line error and exits
+arg_error() {
+    echo "Error: $1" >&2
+    echo "   Use '${__ScriptName} -h' to view usage information" >&2
+    exit 1
+}
+
+##
+# Sets 'val' for the current value option in process_cl_args and 'consumed' to how many args to shift.
+# Uses the inline '=value' when present, otherwise the next argument.
+#
+# Parameters:
+# - Pass the remaining arguments ($@)
+take_value() {
+    if [ "$has_val" = true ]; then
+        consumed=0
+    elif [ $# -gt 0 ]; then
+        val=$1
+        consumed=1
+    else
+        arg_error "Option $arg requires an argument."
+    fi
+}
+
 ##
 # Handles command line arguments and sets global variables accordingly
 #
@@ -572,9 +597,49 @@ wait_for_ping_response() {
 # - Always pass $@
 #
 process_cl_args() {
-    local arg
-    for arg in "$@"; do
+    local arg val has_val consumed
+    local positional=()
+
+    while [ $# -gt 0 ]; do
+        arg=$1
+        shift
+        has_val=false
+
+        # Split '--opt=value' / '-o=value' for options that take a value
         case $arg in
+            -[gfwd]=*|--group=*|--file=*|--wait=*|--dns=*)
+                val=${arg#*=}
+                arg=${arg%%=*}
+                has_val=true
+                ;;
+        esac
+
+        case $arg in
+            -g|--group)
+                take_value "$@"; shift "$consumed"
+                GROUP_NAMES+=("$val")
+                ;;
+            -f|--file)
+                take_value "$@"; shift "$consumed"
+                FILE=$val
+                ;;
+            -w|--wait)
+                take_value "$@"; shift "$consumed"
+                WAIT_MODE=true
+                WAIT_TARGET=$val
+                ;;
+            -d|--dns)
+                take_value "$@"; shift "$consumed"
+                DNS_MODE=true
+                DNS_TARGET=$val
+                ;;
+            -l|--list)
+                LIST_GROUPS=true
+                ;;
+            -v*)
+                [[ $arg =~ ^-v+$ ]] || arg_error "Invalid option $arg"
+                (( VERBOSE += ${#arg} - 1 ))
+                ;;
             -h|--help)
                 printUsage true
                 exit 0
@@ -583,46 +648,20 @@ process_cl_args() {
                 echo "$__Version"
                 exit 0
                 ;;
-        esac
-    done
-
-    while getopts ":lvf:g:w:d:" opt; do
-        case $opt in
-            l)
-                LIST_GROUPS=true
+            --)
+                positional+=("$@")
+                break
                 ;;
-            v)
-                (( VERBOSE++ ))
+            -?*)
+                arg_error "Invalid option $arg"
                 ;;
-            f)
-                FILE=$OPTARG
-                ;;
-            g)
-                GROUP_NAMES+=("$OPTARG")
-                ;;
-            w)
-                WAIT_MODE=true
-                WAIT_TARGET=$OPTARG
-                ;;
-            d)
-                DNS_MODE=true
-                DNS_TARGET=$OPTARG
-                ;;
-            \?)
-                echo "Error: Invalid option -$OPTARG" >&2
-                echo "   Use '${__ScriptName} -h' to view usage information"
-                exit 1
-                ;;
-            :)
-                echo "Error: Option -$OPTARG requires an argument." >&2
-                echo "   Use '${__ScriptName} -h' to view usage information"
-                exit 1
+            *)
+                positional+=("$arg")
                 ;;
         esac
     done
 
-    # Shift off the options and optional --
-    shift $((OPTIND -1))
+    set -- "${positional[@]}"
 
     if [ "$DNS_MODE" = true ] && { [ "$WAIT_MODE" = true ] || [ "$LIST_GROUPS" = true ] || [ ${#GROUP_NAMES[@]} -gt 0 ]; }; then
         echo "Error: Option '-d' cannot be used with '-w', '-l', or '-g'."
