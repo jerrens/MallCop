@@ -30,4 +30,20 @@ test_cases = {
         "rc": 1,
         "description": "Exit code equals the number of errors",
     },
+    "-f {{LIST}} -g ping port": {
+        "name": "group_mixed_option_and_positional",
+        "see": r"\A(?!.*http:).*^ping:$\n  127\.0\.0\.1\s+✓$.*^port:$\n  Port {{OPEN_PORT}} \(127\.0\.0\.1\)\s+✓$",
+        "rc": 0,
+    },
+    "-f {{LIST}} -g ping -g nosuch": {
+        "name": "group_unknown_with_known",
+        "see": r"\A(?!.*Errors:).*^ping:$\n  127\.0\.0\.1\s+✓$",
+        "rc": 0,
+    },
+    "-f {{LIST}} -g ping_fail -g port_fail": {
+        "name": "group_error_count_combined",
+        "see": r"^Errors:\n   Host unreachable: nonexistent\.invalid\n   Port {{CLOSED_PORT}} on 127\.0\.0\.1 is closed$",
+        "rc": 2,
+        "description": "Errors from every group add to the exit code",
+    },
 }
