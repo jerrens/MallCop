@@ -54,9 +54,9 @@ Syntax:
     -g, --group groupname   Only process entries within the specified group; may be repeated
     -f, --file filename     Specify an alternate file containing the list of URLs and services to check
     -w, --wait target       Wait for ping success for an IP, hostname, or group name
-    -d, --dns hostname      Perform a one-off DNS resolution check for the specified host and exit
+    -d, --dns hostname      Perform a one-off DNS resolution check for the specified host and exit (repeatable)
     -l, --list              List available group names in the selected list file and exit
-    -v                      Increase verbosity; repeat to raise the level (-v=1, -vv=2, -vvv=3, ...)
+    -v                      Increase verbosity; repeat to raise the level (-v: 1, -vv: 2, -vvv: 3, ...)
     -h, --help              Display this help message and exit
     --version               Display the script version and exit
                             Value options accept either '-g name' or '-g=name' (same for long forms)
@@ -631,7 +631,7 @@ process_cl_args() {
             -d|--dns)
                 take_value "$@"; shift "$consumed"
                 DNS_MODE=true
-                DNS_TARGET=$val
+                DNS_TARGETS+=("$val")
                 ;;
             -l|--list)
                 LIST_GROUPS=true
@@ -768,7 +768,9 @@ main() {
     if [ "$DNS_MODE" = true ]; then
         printf "%-55s %s\n" "Host" "DNS Resolution"
         echo "----------------------------------------------------------------------"
-        dns_check dns "$DNS_TARGET"
+        for target in "${DNS_TARGETS[@]}"; do
+            dns_check dns "$target"
+        done
         printf "\n"
         if [ "${#errors[@]}" -gt 0 ]; then
             exit "${#errors[@]}"
